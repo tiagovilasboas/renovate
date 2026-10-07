@@ -1,4 +1,5 @@
 import * as httpMock from '~test/http-mock.ts';
+import * as packageCache from '../../../util/cache/package/index.ts';
 import { getDigest, getPkgReleases } from '../index.ts';
 import { BitbucketTagsDatasource } from './index.ts';
 
@@ -146,6 +147,24 @@ describe('modules/datasource/bitbucket-tags/index', () => {
       );
       expect(res).toBeString();
       expect(res).toBe('123');
+    });
+
+    it('caches the digest of a tag separately from the latest commit', async () => {
+      const setCache = vi.spyOn(packageCache, 'setWithRawTtl');
+      httpMock
+        .scope('https://api.bitbucket.org')
+        .get('/2.0/repositories/some/dep2/refs/tags/v1.0.0')
+        .reply(200, { name: 'v1.0.0', target: { hash: '123' } });
+
+      await getDigest({ datasource, packageName: 'some/dep2' }, 'v1.0.0');
+
+      expect(setCache).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.stringMatching(/:some\/dep2:digest:v1\.0\.0$/),
+        expect.anything(),
+        expect.any(Number),
+      );
+      setCache.mockRestore();
     });
 
     it('returns null for missing hash', async () => {

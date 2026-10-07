@@ -1,4 +1,5 @@
 import * as httpMock from '~test/http-mock.ts';
+import * as packageCache from '../../../util/cache/package/index.ts';
 import { getDigest, getPkgReleases } from '../index.ts';
 import { GiteaTagsDatasource } from './index.ts';
 
@@ -294,6 +295,33 @@ describe('modules/datasource/gitea-tags/index', () => {
         'v9.0.1',
       );
       expect(res).toBe('29c9bbb4bfec04ab22761cc2d999eb0fcb8acbed');
+    });
+
+    it('caches the digest of a tag separately from the latest commit', async () => {
+      const setCache = vi.spyOn(packageCache, 'setWithRawTtl');
+      httpMock
+        .scope('https://gitea.com')
+        .get('/api/v1/repos/gitea/helm-chart/tags/v9.0.1')
+        .reply(200, {
+          name: 'v9.0.1',
+          commit: {
+            sha: '29c9bbb4bfec04ab22761cc2d999eb0fcb8acbed',
+            created: '2023-07-19T08:42:55+02:00',
+          },
+        });
+
+      await getDigest(
+        { datasource, packageName: 'gitea/helm-chart' },
+        'v9.0.1',
+      );
+
+      expect(setCache).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.stringMatching(/:gitea\/helm-chart:digest:v9\.0\.1$/),
+        expect.anything(),
+        expect.any(Number),
+      );
+      setCache.mockRestore();
     });
 
     it('falls back to the default registry when none is given', async () => {

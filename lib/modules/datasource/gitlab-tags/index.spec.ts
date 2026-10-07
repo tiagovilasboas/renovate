@@ -1,4 +1,5 @@
 import * as httpMock from '~test/http-mock.ts';
+import * as packageCache from '../../../util/cache/package/index.ts';
 import { getDigest, getPkgReleases } from '../index.ts';
 import { GitlabTagsDatasource } from './index.ts';
 
@@ -184,6 +185,31 @@ describe('modules/datasource/gitlab-tags/index', () => {
         'branch',
       );
       expect(res).toBe(digest);
+    });
+
+    it('caches the digest of a branch separately from the latest commit', async () => {
+      const setCache = vi.spyOn(packageCache, 'setWithRawTtl');
+      httpMock
+        .scope('https://gitlab.company.com')
+        .get('/api/v4/projects/some%2Fdep2/repository/commits/branch')
+        .reply(200, { id: 'abcd00001234' });
+
+      await getDigest(
+        {
+          datasource,
+          registryUrls: ['https://gitlab.company.com/api/v4/'],
+          packageName: 'some/dep2',
+        },
+        'branch',
+      );
+
+      expect(setCache).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.stringMatching(/:some\/dep2:branch$/),
+        expect.anything(),
+        expect.any(Number),
+      );
+      setCache.mockRestore();
     });
 
     it('returns null from gitlab installation with no commits', async () => {
